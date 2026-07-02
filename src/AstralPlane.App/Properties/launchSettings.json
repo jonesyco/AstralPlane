@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "AstralPlane.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "AstralPlane.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
