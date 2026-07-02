@@ -38,4 +38,25 @@ public class RawDevelopTests
         Assert.True(image.Width >= 2000 && image.Height >= 1500,
             $"Developed RAW should be full-size; got {image.Width}x{image.Height}.");
     }
+
+    [SkippableFact]
+    public void ConvertsRawToAvifEndToEnd()
+    {
+        string? raw = FindRawFixture();
+        Skip.If(raw is null, "No RAW fixture present in tests/fixtures/raw (see README).");
+
+        using var ws = new TempWorkspace();
+        string output = ws.PathFor("out.avif");
+        var engine = new ConversionEngine(new MagickInputLoader());
+
+        engine.Convert(raw!, output, ConversionOptions.For(OutputFormat.Avif) with
+        {
+            Resize = ResizeSpec.LongEdge(1600, dontUpscale: true),
+        });
+
+        Assert.True(File.Exists(output));
+        using var result = new MagickImage(output);
+        Assert.Equal(MagickFormat.Avif, result.Format);
+        Assert.True(Math.Max(result.Width, result.Height) == 1600);
+    }
 }
