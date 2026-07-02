@@ -1,0 +1,6 @@
+# RAW camera files are large (10-25 MB each). Do not commit them.
+# Drop any .arw/.cr2/.cr3/.nef/.dng/.orf/.raf/.rw2 here to enable the RAW
+# develop integration test (RawDevelopTests); it is skipped when absent.
+*
+!.gitignore
+!README.md
