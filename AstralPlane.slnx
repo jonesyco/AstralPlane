@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/AstralPlane.App.ViewModels/AstralPlane.App.ViewModels.csproj" />
     <Project Path="src/AstralPlane.App/AstralPlane.App.csproj" />
     <Project Path="src/AstralPlane.Core/AstralPlane.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AstralPlane.App.Tests/AstralPlane.App.Tests.csproj" />
     <Project Path="tests/AstralPlane.Core.Tests/AstralPlane.Core.Tests.csproj" />
   </Folder>
 </Solution>

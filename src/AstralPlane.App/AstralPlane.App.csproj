@@ -55,6 +55,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AstralPlane.Core\AstralPlane.Core.csproj" />
+    <ProjectReference Include="..\AstralPlane.App.ViewModels\AstralPlane.App.ViewModels.csproj" />
   </ItemGroup>
 
   <!--
