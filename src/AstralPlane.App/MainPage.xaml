@@ -5,14 +5,144 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:AstralPlane_App"
+    xmlns:vm="using:AstralPlane.App.ViewModels"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <!--
-        This is the main content area of your application.
-        Add your UI elements here — for example, controls, layouts, and data-bound views.
-        Use 'dotnet new winui-page' to create additional pages and navigate to them via
-        the Frame in MainWindow (RootFrame).
-    -->
-    <Grid />
+    <Page.Resources>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <local:InverseBoolConverter x:Key="InverseBool" />
+    </Page.Resources>
+
+    <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="320" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Toolbar -->
+        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
+            <Button Content="Add files…" Click="AddFiles_Click"
+                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+            <Button Content="Add folder…" Click="AddFolder_Click"
+                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+            <Button Content="Clear" Click="Clear_Click"
+                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+        </StackPanel>
+
+        <!-- Queue + drop zone -->
+        <Border Grid.Row="1" Grid.Column="0"
+                AllowDrop="True" DragOver="Queue_DragOver" Drop="Queue_Drop"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <Grid>
+                <TextBlock Text="Drop images or folders here, or use “Add files…”."
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Visibility="{x:Bind ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}, ConverterParameter=invert}" />
+                <ListView ItemsSource="{x:Bind ViewModel.Queue, Mode=OneWay}"
+                          SelectionMode="None" Padding="4">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:QueueItemViewModel">
+                            <Grid ColumnSpacing="12" Padding="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{x:Bind FileName}" />
+                                    <TextBlock Text="{x:Bind Message, Mode=OneWay}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               FontSize="12" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{x:Bind Status, Mode=OneWay}"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+        </Border>
+
+        <!-- Options panel -->
+        <ScrollViewer Grid.Row="0" Grid.Column="1" Grid.RowSpan="2">
+            <StackPanel Spacing="12" DataContext="{x:Bind ViewModel.Options}">
+                <TextBlock Text="Output" Style="{ThemeResource SubtitleTextBlockStyle}" />
+
+                <ComboBox Header="Format" Width="200"
+                          ItemsSource="{x:Bind ViewModel.Options.AvailableFormats}"
+                          DisplayMemberPath="DisplayName" SelectedValuePath="Format"
+                          SelectedValue="{x:Bind ViewModel.Options.SelectedFormat, Mode=TwoWay}" />
+
+                <TextBlock Text="{x:Bind ViewModel.Options.UnavailableFormatsNote}"
+                           TextWrapping="Wrap" FontSize="12"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Visibility="{x:Bind ViewModel.Options.HasUnavailableFormats, Converter={StaticResource BoolToVisibility}}" />
+
+                <StackPanel Spacing="4"
+                            Visibility="{x:Bind ViewModel.Options.ShowQuality, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="Quality" />
+                    <Slider Minimum="1" Maximum="100" Width="200"
+                            Value="{x:Bind ViewModel.Options.Quality, Mode=TwoWay}" />
+                </StackPanel>
+
+                <CheckBox Content="Lossless"
+                          IsChecked="{x:Bind ViewModel.Options.Lossless, Mode=TwoWay}"
+                          Visibility="{x:Bind ViewModel.Options.ShowLossless, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+
+                <TextBlock Text="Resize" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
+                <ComboBox Header="Mode" Width="200"
+                          ItemsSource="{x:Bind ViewModel.Options.ResizeModes}"
+                          SelectedItem="{x:Bind ViewModel.Options.ResizeMode, Mode=TwoWay}" />
+                <NumberBox Header="Long edge (px)" Width="200"
+                           Value="{x:Bind ViewModel.Options.ResizeLongEdge, Mode=TwoWay}" />
+                <CheckBox Content="Don't upscale"
+                          IsChecked="{x:Bind ViewModel.Options.DontUpscale, Mode=TwoWay}" />
+
+                <TextBlock Text="Metadata" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
+                <ComboBox Header="EXIF/XMP" Width="200"
+                          ItemsSource="{x:Bind ViewModel.Options.MetadataPolicies}"
+                          SelectedItem="{x:Bind ViewModel.Options.Metadata, Mode=TwoWay}" />
+
+                <TextBlock Text="Destination" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
+                <ComboBox Header="Location" Width="200"
+                          ItemsSource="{x:Bind ViewModel.Options.OutputLocationModes}"
+                          SelectedItem="{x:Bind ViewModel.Options.OutputLocation, Mode=TwoWay}" />
+                <Button Content="Choose output folder…" Click="ChooseOutput_Click" />
+                <TextBlock Text="{x:Bind ViewModel.Options.ChosenFolder, Mode=OneWay}"
+                           FontSize="12" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <CheckBox Content="Include subfolders"
+                          IsChecked="{x:Bind ViewModel.Options.RecurseSubfolders, Mode=TwoWay}" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Status bar -->
+        <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+                <ProgressBar IsIndeterminate="True"
+                             Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                <TextBlock Text="{x:Bind ViewModel.CompletionSummary, Mode=OneWay}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Open output folder" Click="OpenOutput_Click"
+                        IsEnabled="{x:Bind ViewModel.HasOutputFolder, Mode=OneWay}" />
+                <Button Content="Cancel" Click="Cancel_Click"
+                        IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay}" />
+                <Button Content="Convert" Style="{ThemeResource AccentButtonStyle}"
+                        Click="Convert_Click"
+                        IsEnabled="{x:Bind ViewModel.CanConvert, Mode=OneWay}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
 </Page>

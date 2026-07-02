@@ -35,6 +35,23 @@ public sealed partial class ConversionOptionsViewModel : ObservableObject
 
     public IReadOnlyList<OutputFormatOption> Formats { get; }
 
+    /// <summary>Formats that can actually be written (shown in the picker).</summary>
+    public IReadOnlyList<OutputFormatOption> AvailableFormats => Formats.Where(f => f.IsEnabled).ToList();
+
+    public bool HasUnavailableFormats => UnavailableFormatsNote is not null;
+
+    /// <summary>A note explaining any disabled formats, or null if all are available.</summary>
+    public string? UnavailableFormatsNote
+    {
+        get
+        {
+            var disabled = Formats.Where(f => !f.IsEnabled).ToList();
+            return disabled.Count == 0
+                ? null
+                : string.Join(" ", disabled.Select(d => d.DisabledReason));
+        }
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowQuality))]
     [NotifyPropertyChangedFor(nameof(ShowLossless))]
@@ -54,6 +71,11 @@ public sealed partial class ConversionOptionsViewModel : ObservableObject
     [ObservableProperty] private OutputLocationMode _outputLocation = OutputLocationMode.SameAsSource;
     [ObservableProperty] private string? _chosenFolder;
     [ObservableProperty] private bool _recurseSubfolders;
+
+    // View-support lists for enum-bound pickers.
+    public IReadOnlyList<ResizeMode> ResizeModes { get; } = Enum.GetValues<ResizeMode>();
+    public IReadOnlyList<MetadataPolicy> MetadataPolicies { get; } = Enum.GetValues<MetadataPolicy>();
+    public IReadOnlyList<OutputLocationMode> OutputLocationModes { get; } = Enum.GetValues<OutputLocationMode>();
 
     private OutputFormatInfo SelectedInfo => FormatRegistry.GetOutput(SelectedFormat);
 

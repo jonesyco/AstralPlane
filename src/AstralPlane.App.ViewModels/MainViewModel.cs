@@ -29,6 +29,10 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool CanConvert => !IsRunning && Queue.Any(i => i.Status == QueueItemStatus.Ready);
 
+    public bool HasItems => Queue.Count > 0;
+
+    public bool HasOutputFolder => !string.IsNullOrEmpty(LastOutputFolder);
+
     /// <summary>Adds files to the queue, de-duplicating by full path and classifying each.</summary>
     public void AddFiles(IEnumerable<string> paths)
     {
@@ -41,6 +45,7 @@ public sealed partial class MainViewModel : ObservableObject
             Queue.Add(new QueueItemViewModel(fullPath, _classifier(fullPath)));
         }
         OnPropertyChanged(nameof(CanConvert));
+        OnPropertyChanged(nameof(HasItems));
     }
 
     /// <summary>Enumerates a folder (optionally recursively) and adds the files.</summary>
@@ -55,9 +60,12 @@ public sealed partial class MainViewModel : ObservableObject
         Queue.Clear();
         _knownPaths.Clear();
         OnPropertyChanged(nameof(CanConvert));
+        OnPropertyChanged(nameof(HasItems));
     }
 
-    [ObservableProperty] private string? _lastOutputFolder;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOutputFolder))]
+    private string? _lastOutputFolder;
     [ObservableProperty] private string? _completionSummary;
 
     /// <summary>

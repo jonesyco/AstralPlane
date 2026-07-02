@@ -72,6 +72,15 @@ public class ConversionOptionsViewModelTests
     }
 
     [Fact]
+    public void AvailableFormatsExcludeDisabledAndNoteExplains()
+    {
+        var vm = NewVm();
+        Assert.DoesNotContain(vm.AvailableFormats, f => f.Format == OutputFormat.Heic);
+        Assert.Contains(vm.AvailableFormats, f => f.Format == OutputFormat.Avif);
+        Assert.Contains("HEIC", vm.UnavailableFormatsNote);
+    }
+
+    [Fact]
     public void BuildOptionsMapsLongEdgeResize()
     {
         var vm = NewVm();

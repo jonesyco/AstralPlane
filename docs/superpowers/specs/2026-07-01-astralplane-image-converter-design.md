@@ -8,24 +8,33 @@
 AstralPlane is a Windows 11 desktop application that batch-converts images
 between formats. It accepts common camera RAW formats and standard raster
 formats as input, and writes to modern web/photo formats as output. It is a
-*converter*, not an editor: RAW files are handled by extracting their embedded
-full-size JPEG preview rather than developing them, and there is no editing UI
-beyond resize and quality controls.
+*converter*, not an editor: RAW files are **developed to full resolution** via
+Magick.NET using the camera's white balance (default demosaic — no white
+balance / exposure / tone controls), and there is no editing UI beyond resize
+and quality controls.
+
+> **Implementation update (2026-07-01, from Spike 1):** the original plan was
+> to extract each RAW's embedded full-size JPEG preview. A spike showed
+> embedded previews are *not* full-size (Sony ARW embeds 1616×1080 = 27% of
+> sensor; Olympus ORF 3200×2400 = 69%), while Magick.NET develops to true full
+> resolution in ~2s. AstralPlane therefore **develops** RAW rather than
+> extracting previews, which also removed the LibRaw dependency. Loading RAW
+> and raster now share one `MagickInputLoader`.
 
 ## Goals
 
 - Convert camera RAW (ARW, CR2/CR3, NEF, DNG, ORF, RAF, RW2, and other
-  LibRaw-supported formats) to JPG, PNG, WebP, AVIF, or HEIC.
+  Magick.NET/LibRaw-supported formats) to JPG, PNG, WebP, or AVIF.
 - Convert standard raster formats (JPG, PNG, WebP, TIFF, BMP, GIF, HEIC, AVIF)
-  to JPG, PNG, WebP, AVIF, or HEIC.
+  to JPG, PNG, WebP, or AVIF. (HEIC is input-only — see Format Support.)
 - Batch / folder conversion with a queue and progress.
 - Quality / compression control, resize/scale, and EXIF/XMP metadata handling.
 - Never overwrite existing files.
 
 ## Non-Goals (v1)
 
-- RAW development controls (white balance, exposure, tone). Embedded preview
-  only.
+- RAW development controls (white balance, exposure, tone). RAW is developed
+  with camera white balance and default demosaic; no adjustment UI.
 - Image editing (crop, filters, color grading).
 - Multi-frame / animated output. Animated GIF input converts the first frame
   only.
@@ -35,59 +44,82 @@ beyond resize and quality controls.
 ## Technology
 
 - **UI:** WinUI 3 (Windows App SDK), MVVM. Windows 11 target.
-- **Engine:** [Magick.NET](https://github.com/dlemstra/Magick.NET) — one library
-  covering RAW decode plus all standard raster read/write, including WebP,
-  AVIF, and HEIC via bundled delegates (`libwebp`, `libaom`/`libheif`).
-- **RAW preview extraction:** primary path via Magick.NET; **LibRaw fallback**
-  (thumbnail/preview API) if Magick.NET cannot cleanly extract the full-size
-  embedded preview. This is the top technical risk (see Risks).
-- **Language:** C#, .NET (latest LTS supported by Windows App SDK).
+- **Engine:** [Magick.NET](https://github.com/dlemstra/Magick.NET)
+  (`Magick.NET-Q16-x64`) — one library covering RAW develop plus all standard
+  raster read/write, with WebP/AVIF read+write and HEIC **read-only** via
+  bundled delegates (`libwebp`, `libaom`; HEIC encode is not shipped).
+- **RAW:** developed to full resolution via Magick.NET
+  (`new MagickImage(rawPath)`) with the `dng:use-camera-wb` define. No LibRaw
+  dependency (see Spike 1 update in Summary).
+- **UI framework:** WinUI 3 via Windows App SDK 2.2.0, TFM
+  `net10.0-windows10.0.26100.0`, x64. MVVM logic lives in a WinUI-free
+  `AstralPlane.App.ViewModels` library (CommunityToolkit.Mvvm) so it is
+  unit-testable.
+- **Language:** C#, .NET 10.
 - **Tests:** xUnit.
 
 ## Format Support
 
 | Direction | Formats |
 |-----------|---------|
-| **Input** | RAW: ARW, CR2, CR3, NEF, DNG, ORF, RAF, RW2, and other LibRaw-supported RAW. Raster: JPG, PNG, WebP, TIFF, BMP, GIF, HEIC, AVIF |
-| **Output** | JPG, PNG, WebP, AVIF, HEIC |
+| **Input** | RAW: ARW, CR2, CR3, NEF, DNG, ORF, RAF, RW2, and other Magick.NET-supported RAW. Raster: JPG, PNG, WebP, TIFF, BMP, GIF, HEIC, AVIF |
+| **Output** | JPG, PNG, WebP, AVIF (**HEIC input-only** — encoding not available in the shipped build) |
+
+**HEIC output is disabled.** The shipped Magick.NET Windows build reads HEIC but
+cannot encode it (libheif/x265 encoding omitted for patent-licensing reasons).
+`FormatCapabilityProbe` detects this at startup and the UI shows HEIC output
+disabled with an explanatory note; AVIF (unencumbered, via libaom) is the
+recommended modern output.
 
 Per-format output capabilities (drive which option controls are shown):
 
-| Format | Quality | Lossless |
-|--------|---------|----------|
-| JPG    | yes     | no       |
-| PNG    | no      | always   |
-| WebP   | yes     | toggle   |
-| AVIF   | yes     | toggle   |
-| HEIC   | yes     | (delegate-dependent) |
+| Format | Quality | Lossless | Availability |
+|--------|---------|----------|--------------|
+| JPG    | yes     | no       | always       |
+| PNG    | no      | always   | always       |
+| WebP   | yes     | toggle   | always       |
+| AVIF   | yes     | toggle   | always       |
+| HEIC   | yes     | no       | **disabled (no encoder)** |
 
 ## Architecture
 
-Two projects. The engine has **no** UI dependency; the UI depends on the
-engine and never the reverse.
+Three projects. The engine has **no** UI dependency; the view-model library
+depends on the engine; the WinUI app depends on both — never the reverse.
 
 ### `AstralPlane.Core` (class library)
 
 - **`FormatRegistry`** — authoritative list of supported input/output formats
-  and their capabilities (quality? lossless?).
+  and their capabilities (quality? lossless? metadata?).
+- **`FormatCapabilityProbe`** — reflects Magick.NET's write support at startup
+  so unavailable outputs (HEIC) are disabled in the UI.
 - **`FormatDetector`** — classifies an input file by extension **and**
   magic-byte sniffing (content wins on mismatch).
-- **`IInputLoader`** — turns a source file into an in-memory image. Two
-  implementations behind one interface, selected by `FormatDetector`:
-  - `RawPreviewLoader` — extracts embedded full-size preview; falls back to
-    full develop if no usable preview exists.
-  - `RasterLoader` — loads standard raster via Magick.NET.
-- **`ConversionOptions`** — target format, quality, lossless toggle, resize
-  spec, metadata policy, output-location mode.
-- **`ConversionEngine`** — takes a loaded image + `ConversionOptions`, applies
-  resize and metadata policy, encodes to the target format, writes the file.
+- **`IInputLoader` / `MagickInputLoader`** — turns a source file into an
+  in-memory image. One implementation: raster reads directly, RAW is developed
+  to full resolution (Spike 1 collapsed the two planned loaders into one).
+- **`ConversionOptions`** + **`MagickEncoding`** — target format, quality,
+  lossless toggle, resize spec, metadata policy, output-location mode; mapped
+  onto Magick encode settings.
+- **`ResizeCalculator`** — pure resize math (long-edge / percentage / box,
+  don't-upscale).
+- **`MagickMetadata`** — preserve/strip EXIF/XMP.
+- **`ConversionEngine`** (`IItemConverter`) — takes a source + output path +
+  `ConversionOptions`; loads, resizes, applies metadata, encodes, writes.
 - **`OutputPathPlanner`** — builds the timestamped destination subfolder and
   per-file output names/extensions.
 - **`BatchRunner`** — iterates a job's items with bounded parallelism
   (`Environment.ProcessorCount`), reports progress via `IProgress<>`, isolates
   per-file failures, honors a `CancellationToken`.
 
-### `AstralPlane.App` (WinUI 3, MVVM)
+### `AstralPlane.App.ViewModels` (class library, WinUI-free)
+
+- **`MainViewModel`** — queue (add/dedupe-by-full-path, classify Ready/
+  Unsupported), CanConvert gating, `ConvertAsync` driving `BatchRunner`.
+- **`ConversionOptionsViewModel`** — format options from the capability probe,
+  per-format quality/lossless visibility, resize/metadata/destination.
+- **`QueueItemViewModel`** — per-file name/category/status/message.
+
+### `AstralPlane.App` (WinUI 3)
 
 - Drop zone (files/folder drag-and-drop) + "Add files / Add folder" buttons.
 - Queue list with per-file status (Ready / Converting / Done / Failed /
@@ -188,33 +220,37 @@ engine and never the reverse.
 visibility per format, enable/disable Convert) unit-tested where practical.
 WinUI view wiring verified by manual smoke test — no automated UI tests in v1.
 
-**Fixtures:** small `tests/fixtures/` set (tiny JPG/PNG/WebP/TIFF/BMP/GIF + one
-small HEIC/AVIF + one sample ARW), kept small enough to live in the repo.
+**Fixtures:** tiny raster images are generated programmatically at test time
+(`TempWorkspace`) — no committed binaries. RAW files are large, so
+`tests/fixtures/raw/` is gitignored; drop a RAW there to enable the develop
+integration test (skipped when absent).
 
 ## Risks
 
-1. **RAW embedded-preview extraction via Magick.NET** — Magick.NET's RAW path
-   normally *develops* the file rather than exposing the embedded preview.
-   Mitigation: validate a preview-extraction approach early (spike); if
-   unavailable, use LibRaw's thumbnail/preview API directly as the
-   `RawPreviewLoader` implementation. Develop remains the fallback.
-2. **AVIF/HEIC delegate availability** in the chosen Magick.NET distribution —
-   mitigated by the startup delegate probe and disabling unavailable outputs.
-3. **HEIC encoding licensing** — documented; AVIF recommended as the
-   unencumbered modern option.
+1. **RAW handling** — *Resolved (Spike 1).* Embedded previews are not
+   full-size, so AstralPlane develops RAW via Magick.NET to full resolution.
+   LibRaw is not needed; it can be reintroduced only if a specific RAW format
+   fails to develop.
+2. **AVIF/HEIC delegate availability** — *Resolved.* The startup
+   `FormatCapabilityProbe` reports writable formats; HEIC output is disabled
+   (no encoder), AVIF is available.
+3. **HEIC encoding licensing** — avoided by not shipping a HEIC encoder; AVIF
+   (unencumbered) is the modern output.
 
 ## Project Layout
 
 ```text
 AstralPlane/
-|-- AstralPlane.sln
+|-- AstralPlane.slnx
 |-- src/
-|   |-- AstralPlane.Core/        # conversion engine (no UI)
-|   `-- AstralPlane.App/         # WinUI 3 desktop app (MVVM)
+|   |-- AstralPlane.Core/            # conversion engine (no UI)
+|   |-- AstralPlane.App.ViewModels/  # MVVM logic (WinUI-free, testable)
+|   `-- AstralPlane.App/             # WinUI 3 desktop app (views + wiring)
 |-- tests/
-|   |-- AstralPlane.Core.Tests/  # xUnit
-|   `-- fixtures/                # small sample images
+|   |-- AstralPlane.Core.Tests/      # xUnit (engine)
+|   |-- AstralPlane.App.Tests/       # xUnit (view models)
+|   `-- fixtures/raw/                # gitignored RAW samples (optional)
 |-- docs/
-|   `-- superpowers/specs/       # this design + future specs
+|   `-- superpowers/specs/           # this design + future specs
 `-- README.md
 ```
