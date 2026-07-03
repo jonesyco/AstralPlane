@@ -18,7 +18,9 @@ public sealed partial class MainPage : Page
 
     public MainViewModel ViewModel { get; } =
         new(new ConversionOptionsViewModel(new MagickFormatCapabilityProbe()),
-            thumbnailProvider: new ShellThumbnailProvider());
+            thumbnailProvider: new MagickThumbnailProvider());
+
+    private readonly AppSettings _settings = AppSettings.Load();
 
     public MainPage()
     {
@@ -30,11 +32,18 @@ public sealed partial class MainPage : Page
                 ApplyLayout();
         };
         ApplyLayout();
+
+        // Reflect the persisted theme in the selector and on the element tree.
+        ThemeSelector.SelectedIndex = (int)_settings.Theme;
+        ApplyTheme(_settings.Theme);
     }
 
     private void ApplyLayout()
     {
-        QueueRepeater.Layout = ViewModel.ViewMode == QueueViewMode.Grid
+        bool grid = ViewModel.ViewMode == QueueViewMode.Grid;
+
+        QueueRepeater.ItemTemplate = (DataTemplate)Resources[grid ? "GridItemTemplate" : "ListItemTemplate"];
+        QueueRepeater.Layout = grid
             ? new UniformGridLayout
             {
                 MinItemWidth = 180,
@@ -43,6 +52,19 @@ public sealed partial class MainPage : Page
                 MinRowSpacing = 8,
             }
             : new StackLayout { Spacing = 4 };
+    }
+
+    private void ApplyTheme(AppTheme theme)
+    {
+        RootGrid.RequestedTheme = AppSettings.ToElementTheme(theme);
+    }
+
+    private void ThemeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var theme = (AppTheme)ThemeSelector.SelectedIndex;
+        ApplyTheme(theme);
+        _settings.Theme = theme;
+        _settings.Save();
     }
 
     private static void InitializeWithWindow(object target)
@@ -75,20 +97,20 @@ public sealed partial class MainPage : Page
 
     private void Clear_Click(object sender, RoutedEventArgs e) => ViewModel.Clear();
 
-    private void ToggleView_Click(object sender, RoutedEventArgs e) => ViewModel.ToggleViewMode();
-
     private void SelectAll_Click(object sender, RoutedEventArgs e) => ViewModel.SelectAll();
 
     private void DeselectAll_Click(object sender, RoutedEventArgs e) => ViewModel.DeselectAll();
 
     private void RemoveSelected_Click(object sender, RoutedEventArgs e) => ViewModel.RemoveSelected();
 
-    // Lazy, per-tile thumbnail load: fires as a tile is realized by the virtualized
-    // ItemsRepeater. EnsureThumbnailAsync is a no-op after the first attempt per item.
-    private async void Tile_Loaded(object sender, RoutedEventArgs e)
+    // Lazy, per-item thumbnail load: fires as the virtualized ItemsRepeater realizes an
+    // element. We resolve the item by index rather than DataContext, because ItemsRepeater
+    // with an x:Bind template does not set the element's DataContext. EnsureThumbnailAsync
+    // is a no-op after the first attempt per item, so recycling is harmless.
+    private async void QueueRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
-        if (sender is FrameworkElement { DataContext: QueueItemViewModel item })
-            await ViewModel.EnsureThumbnailAsync(item);
+        if (args.Index >= 0 && args.Index < ViewModel.Queue.Count)
+            await ViewModel.EnsureThumbnailAsync(ViewModel.Queue[args.Index]);
     }
 
     private void Queue_DragOver(object sender, DragEventArgs e)

@@ -14,9 +14,76 @@
         <local:InverseBoolConverter x:Key="InverseBool" />
         <local:BytesToImageConverter x:Key="BytesToImage" />
         <local:BoolToOpacityConverter x:Key="UnsupportedToOpacity" />
+
+        <!-- Grid tile: rendered image above name + status. -->
+        <DataTemplate x:Key="GridItemTemplate" x:DataType="vm:QueueItemViewModel">
+            <Grid Width="176" Padding="8" RowSpacing="6"
+                  CornerRadius="6"
+                  Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                  Opacity="{x:Bind IsUnsupported, Converter={StaticResource UnsupportedToOpacity}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="140" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <Image Stretch="Uniform"
+                           Source="{x:Bind Thumbnail, Mode=OneWay, Converter={StaticResource BytesToImage}}"
+                           Visibility="{x:Bind ShowThumbnail, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                    <FontIcon Glyph="&#xE91B;" FontSize="40"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              Visibility="{x:Bind ShowPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                    <CheckBox HorizontalAlignment="Right" VerticalAlignment="Top"
+                              IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                              Visibility="{x:Bind IsSelectable, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+
+                <TextBlock Grid.Row="1" Text="{x:Bind FileName}"
+                           TextTrimming="CharacterEllipsis" MaxLines="1" />
+                <TextBlock Grid.Row="2" Text="{x:Bind Status, Mode=OneWay}"
+                           FontSize="12"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- List row: left-justified name + type · dimensions · size. -->
+        <DataTemplate x:Key="ListItemTemplate" x:DataType="vm:QueueItemViewModel">
+            <Grid Padding="8,6" ColumnSpacing="12"
+                  HorizontalAlignment="Stretch"
+                  Opacity="{x:Bind IsUnsupported, Converter={StaticResource UnsupportedToOpacity}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <CheckBox Grid.Column="0" MinWidth="0" VerticalAlignment="Center"
+                          IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                          Visibility="{x:Bind IsSelectable, Converter={StaticResource BoolToVisibility}}" />
+
+                <Grid Grid.Column="1" Width="48" Height="48">
+                    <Image Stretch="Uniform"
+                           Source="{x:Bind Thumbnail, Mode=OneWay, Converter={StaticResource BytesToImage}}"
+                           Visibility="{x:Bind ShowThumbnail, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                    <FontIcon Glyph="&#xE91B;" FontSize="20"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              Visibility="{x:Bind ShowPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Left">
+                    <TextBlock Text="{x:Bind FileName}" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" MaxLines="1" />
+                    <TextBlock Text="{x:Bind DetailsLine, Mode=OneWay}" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
     </Page.Resources>
 
-    <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
+    <Grid x:Name="RootGrid" Padding="16" ColumnSpacing="16" RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -27,25 +94,40 @@
             <ColumnDefinition Width="320" />
         </Grid.ColumnDefinitions>
 
-        <!-- Toolbar -->
-        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
-            <Button Content="Add files…" Click="AddFiles_Click"
-                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
-            <Button Content="Add folder…" Click="AddFolder_Click"
-                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
-            <AppBarSeparator />
-            <Button Content="Select all" Click="SelectAll_Click"
-                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
-            <Button Content="Deselect all" Click="DeselectAll_Click"
-                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
-            <Button Content="Remove selected" Click="RemoveSelected_Click"
-                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
-            <AppBarSeparator />
-            <ToggleButton Content="Grid / List" Click="ToggleView_Click"
-                          IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
-            <Button Content="Clear" Click="Clear_Click"
-                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
-        </StackPanel>
+        <!-- Toolbar: actions on the left, theme selector on the right -->
+        <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Content="Add files…" Click="AddFiles_Click"
+                        IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+                <Button Content="Add folder…" Click="AddFolder_Click"
+                        IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+                <AppBarSeparator />
+                <Button Content="Select all" Click="SelectAll_Click"
+                        IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+                <Button Content="Deselect all" Click="DeselectAll_Click"
+                        IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+                <Button Content="Remove selected" Click="RemoveSelected_Click"
+                        IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+                <AppBarSeparator />
+                <ToggleSwitch OffContent="Grid" OnContent="List" VerticalAlignment="Center"
+                              IsOn="{x:Bind ViewModel.IsListView, Mode=TwoWay}"
+                              IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+                <Button Content="Clear" Click="Clear_Click"
+                        IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+            </StackPanel>
+
+            <ComboBox Grid.Column="1" x:Name="ThemeSelector" VerticalAlignment="Center"
+                      SelectionChanged="ThemeSelector_SelectionChanged">
+                <ComboBoxItem Content="System" />
+                <ComboBoxItem Content="Light" />
+                <ComboBoxItem Content="Dark" />
+            </ComboBox>
+        </Grid>
 
         <!-- Queue + drop zone -->
         <Border Grid.Row="1" Grid.Column="0"
@@ -60,99 +142,61 @@
 
                 <ScrollViewer Padding="4">
                     <ItemsRepeater x:Name="QueueRepeater"
-                                   ItemsSource="{x:Bind ViewModel.Queue, Mode=OneWay}">
-                        <ItemsRepeater.Layout>
-                            <UniformGridLayout MinItemWidth="180" MinItemHeight="200"
-                                               MinColumnSpacing="8" MinRowSpacing="8" />
-                        </ItemsRepeater.Layout>
-                        <ItemsRepeater.ItemTemplate>
-                            <DataTemplate x:DataType="vm:QueueItemViewModel">
-                                <Grid Loaded="Tile_Loaded" Width="176" Padding="8" RowSpacing="6"
-                                      CornerRadius="6"
-                                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                      Opacity="{x:Bind IsUnsupported, Converter={StaticResource UnsupportedToOpacity}}">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="140" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-
-                                    <!-- Thumbnail or placeholder -->
-                                    <Grid Grid.Row="0">
-                                        <Image Stretch="Uniform"
-                                               Source="{x:Bind Thumbnail, Mode=OneWay, Converter={StaticResource BytesToImage}}"
-                                               Visibility="{x:Bind ShowThumbnail, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
-                                        <FontIcon Glyph="&#xE91B;" FontSize="40"
-                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                  Visibility="{x:Bind ShowPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
-                                        <CheckBox HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                  IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
-                                                  Visibility="{x:Bind IsSelectable, Converter={StaticResource BoolToVisibility}}" />
-                                    </Grid>
-
-                                    <TextBlock Grid.Row="1" Text="{x:Bind FileName}"
-                                               TextTrimming="CharacterEllipsis" MaxLines="1" />
-                                    <TextBlock Grid.Row="2" Text="{x:Bind Status, Mode=OneWay}"
-                                               FontSize="12"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
+                                   ItemsSource="{x:Bind ViewModel.Queue, Mode=OneWay}"
+                                   ElementPrepared="QueueRepeater_ElementPrepared" />
                 </ScrollViewer>
             </Grid>
         </Border>
 
         <!-- Options panel -->
-        <ScrollViewer Grid.Row="0" Grid.Column="1" Grid.RowSpan="2">
-            <StackPanel Spacing="12" DataContext="{x:Bind ViewModel.Options}">
+        <ScrollViewer Grid.Row="1" Grid.Column="1">
+            <StackPanel Spacing="12" HorizontalAlignment="Left" DataContext="{x:Bind ViewModel.Options}">
                 <TextBlock Text="Output" Style="{ThemeResource SubtitleTextBlockStyle}" />
 
-                <ComboBox Header="Format" Width="200"
+                <ComboBox Header="Format" HorizontalAlignment="Left" MinWidth="200"
                           ItemsSource="{x:Bind ViewModel.Options.AvailableFormats}"
                           DisplayMemberPath="DisplayName" SelectedValuePath="Format"
                           SelectedValue="{x:Bind ViewModel.Options.SelectedFormat, Mode=TwoWay}" />
 
                 <TextBlock Text="{x:Bind ViewModel.Options.UnavailableFormatsNote}"
-                           TextWrapping="Wrap" FontSize="12"
+                           TextWrapping="Wrap" FontSize="12" HorizontalAlignment="Left"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Visibility="{x:Bind ViewModel.Options.HasUnavailableFormats, Converter={StaticResource BoolToVisibility}}" />
 
-                <StackPanel Spacing="4"
+                <StackPanel Spacing="4" HorizontalAlignment="Left"
                             Visibility="{x:Bind ViewModel.Options.ShowQuality, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                     <TextBlock Text="Quality" />
                     <Slider Minimum="1" Maximum="100" Width="200"
                             Value="{x:Bind ViewModel.Options.Quality, Mode=TwoWay}" />
                 </StackPanel>
 
-                <CheckBox Content="Lossless"
+                <CheckBox Content="Lossless" HorizontalAlignment="Left"
                           IsChecked="{x:Bind ViewModel.Options.Lossless, Mode=TwoWay}"
                           Visibility="{x:Bind ViewModel.Options.ShowLossless, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
 
                 <TextBlock Text="Resize" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
-                <ComboBox Header="Mode" Width="200"
+                <ComboBox Header="Mode" HorizontalAlignment="Left" MinWidth="200"
                           ItemsSource="{x:Bind ViewModel.Options.ResizeModes}"
                           SelectedItem="{x:Bind ViewModel.Options.ResizeMode, Mode=TwoWay}" />
-                <NumberBox Header="Long edge (px)" Width="200"
+                <NumberBox Header="Long edge (px)" HorizontalAlignment="Left" MinWidth="200"
                            Value="{x:Bind ViewModel.Options.ResizeLongEdge, Mode=TwoWay}" />
-                <CheckBox Content="Allow upscaling"
+                <CheckBox Content="Allow upscaling" HorizontalAlignment="Left"
                           IsChecked="{x:Bind ViewModel.Options.AllowUpscale, Mode=TwoWay}" />
 
                 <TextBlock Text="Metadata" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
-                <ComboBox Header="EXIF/XMP" Width="200"
+                <ComboBox Header="EXIF/XMP" HorizontalAlignment="Left" MinWidth="200"
                           ItemsSource="{x:Bind ViewModel.Options.MetadataPolicies}"
                           SelectedItem="{x:Bind ViewModel.Options.Metadata, Mode=TwoWay}" />
 
                 <TextBlock Text="Destination" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
-                <ComboBox Header="Location" Width="200"
+                <ComboBox Header="Location" HorizontalAlignment="Left" MinWidth="200"
                           ItemsSource="{x:Bind ViewModel.Options.OutputLocationModes}"
                           SelectedItem="{x:Bind ViewModel.Options.OutputLocation, Mode=TwoWay}" />
-                <Button Content="Choose output folder…" Click="ChooseOutput_Click" />
+                <Button Content="Choose output folder…" HorizontalAlignment="Left" Click="ChooseOutput_Click" />
                 <TextBlock Text="{x:Bind ViewModel.Options.ChosenFolder, Mode=OneWay}"
-                           FontSize="12" TextWrapping="Wrap"
+                           FontSize="12" TextWrapping="Wrap" HorizontalAlignment="Left"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <CheckBox Content="Include subfolders"
+                <CheckBox Content="Include subfolders" HorizontalAlignment="Left"
                           IsChecked="{x:Bind ViewModel.Options.RecurseSubfolders, Mode=TwoWay}" />
             </StackPanel>
         </ScrollViewer>
@@ -160,15 +204,28 @@
         <!-- Status bar -->
         <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+
+            <!-- Attribution badge -->
+            <HyperlinkButton Grid.Column="0" VerticalAlignment="Bottom"
+                             NavigateUri="https://github.com/jonesyco/AstralPlane"
+                             ToolTipService.ToolTip="View AstralPlane on GitHub"
+                             Padding="4,2" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE8A7;" FontSize="12" />
+                    <TextBlock Text="project by jonesyco" FontSize="12" />
+                </StackPanel>
+            </HyperlinkButton>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
                 <ProgressBar IsIndeterminate="True"
                              Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
                 <TextBlock Text="{x:Bind ViewModel.CompletionSummary, Mode=OneWay}" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
                 <Button Content="Open output folder" Click="OpenOutput_Click"
                         IsEnabled="{x:Bind ViewModel.HasOutputFolder, Mode=OneWay}" />
                 <Button Content="Cancel" Click="Cancel_Click"

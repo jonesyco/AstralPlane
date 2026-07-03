@@ -43,7 +43,16 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanConvert))]
     private bool _isRunning;
 
-    [ObservableProperty] private QueueViewMode _viewMode = QueueViewMode.Grid;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsListView))]
+    private QueueViewMode _viewMode = QueueViewMode.Grid;
+
+    /// <summary>Two-way view of <see cref="ViewMode"/> for a ToggleSwitch (on = List).</summary>
+    public bool IsListView
+    {
+        get => ViewMode == QueueViewMode.List;
+        set => ViewMode = value ? QueueViewMode.List : QueueViewMode.Grid;
+    }
 
     public void ToggleViewMode() =>
         ViewMode = ViewMode == QueueViewMode.Grid ? QueueViewMode.List : QueueViewMode.Grid;
@@ -134,19 +143,22 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         item.ThumbnailRequested = true;
 
-        byte[]? bytes;
+        ThumbnailResult? result;
         try
         {
-            bytes = await _thumbnailProvider.GetAsync(item.SourcePath, ThumbnailPixelSize, CancellationToken.None);
+            result = await _thumbnailProvider.GetAsync(item.SourcePath, ThumbnailPixelSize, CancellationToken.None);
         }
         catch
         {
-            bytes = null; // thumbnail failure never affects conversion
+            result = null; // thumbnail failure never affects conversion
         }
 
-        if (bytes is { Length: > 0 })
+        if (result is { Bytes.Length: > 0 })
         {
-            item.Thumbnail = bytes;
+            item.Thumbnail = result.Bytes;
+            item.PixelWidth = result.PixelWidth;
+            item.PixelHeight = result.PixelHeight;
+            item.FileSizeBytes = result.FileSizeBytes;
             item.ThumbnailState = ThumbnailState.Loaded;
         }
         else

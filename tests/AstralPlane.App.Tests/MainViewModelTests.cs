@@ -11,10 +11,10 @@ public class MainViewModelTests
         public IReadOnlyList<OutputFormat> WritableOutputs => [];
     }
 
-    private sealed class FakeThumbnailProvider(byte[]? result) : IThumbnailProvider
+    private sealed class FakeThumbnailProvider(ThumbnailResult? result) : IThumbnailProvider
     {
         public int Calls { get; private set; }
-        public Task<byte[]?> GetAsync(string path, int pixelSize, CancellationToken ct)
+        public Task<ThumbnailResult?> GetAsync(string path, int pixelSize, CancellationToken ct)
         {
             Calls++;
             return Task.FromResult(result);
@@ -97,6 +97,24 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void IsListViewMirrorsAndSetsViewMode()
+    {
+        var vm = NewVm();
+        Assert.False(vm.IsListView);
+
+        var raised = new List<string?>();
+        ((System.ComponentModel.INotifyPropertyChanged)vm).PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.IsListView = true;
+        Assert.Equal(QueueViewMode.List, vm.ViewMode);
+        Assert.True(vm.IsListView);
+        Assert.Contains(nameof(MainViewModel.IsListView), raised);
+
+        vm.ViewMode = QueueViewMode.Grid;
+        Assert.False(vm.IsListView);
+    }
+
+    [Fact]
     public void CanConvertRequiresAReadyAndSelectedItem()
     {
         var vm = NewVm();
@@ -146,7 +164,7 @@ public class MainViewModelTests
     [Fact]
     public async Task EnsureThumbnailAsyncSetsLoadedAndDoesNotRefetch()
     {
-        var provider = new FakeThumbnailProvider([1, 2, 3]);
+        var provider = new FakeThumbnailProvider(new ThumbnailResult([1, 2, 3], 4000, 3000, 1_500_000));
         var vm = NewVmWith(provider);
         vm.AddFiles([@"C:\pics\a.png"]);
         var item = vm.Queue.Single();
@@ -154,6 +172,10 @@ public class MainViewModelTests
         await vm.EnsureThumbnailAsync(item);
         Assert.Equal(ThumbnailState.Loaded, item.ThumbnailState);
         Assert.Equal([1, 2, 3], item.Thumbnail);
+        Assert.Equal(4000, item.PixelWidth);
+        Assert.Equal(3000, item.PixelHeight);
+        Assert.Equal("4000 × 3000", item.DimensionsLabel);
+        Assert.Equal("1.4 MB", item.FileSizeLabel);
 
         await vm.EnsureThumbnailAsync(item); // second call is a no-op
         Assert.Equal(1, provider.Calls);
