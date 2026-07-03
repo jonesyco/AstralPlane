@@ -65,7 +65,9 @@ public sealed partial class ConversionOptionsViewModel : ObservableObject
     [ObservableProperty] private int _resizeWidth = 1920;
     [ObservableProperty] private int _resizeHeight = 1080;
     [ObservableProperty] private double _resizePercent = 50;
-    [ObservableProperty] private bool _dontUpscale = true;
+    // Reframed control: default off (clamp enlargement), behaviourally identical
+    // to the previous "Don't upscale" default. Maps to ResizeSpec.DontUpscale = !AllowUpscale.
+    [ObservableProperty] private bool _allowUpscale;
 
     [ObservableProperty] private MetadataPolicy _metadata = MetadataPolicy.Preserve;
     [ObservableProperty] private OutputLocationMode _outputLocation = OutputLocationMode.SameAsSource;
@@ -96,9 +98,9 @@ public sealed partial class ConversionOptionsViewModel : ObservableObject
 
     private ResizeSpec BuildResize() => ResizeMode switch
     {
-        ResizeMode.LongEdge => ResizeSpec.LongEdge(ResizeLongEdge, DontUpscale),
-        ResizeMode.Percentage => ResizeSpec.Percentage(ResizePercent, DontUpscale),
-        ResizeMode.Box => ResizeSpec.Box(ResizeWidth, ResizeHeight, DontUpscale),
+        ResizeMode.LongEdge => ResizeSpec.LongEdge(ResizeLongEdge, !AllowUpscale),
+        ResizeMode.Percentage => ResizeSpec.Percentage(ResizePercent, !AllowUpscale),
+        ResizeMode.Box => ResizeSpec.Box(ResizeWidth, ResizeHeight, !AllowUpscale),
         _ => ResizeSpec.None,
     };
 }

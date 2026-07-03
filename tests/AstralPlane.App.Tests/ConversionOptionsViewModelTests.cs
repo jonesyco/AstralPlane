@@ -81,17 +81,32 @@ public class ConversionOptionsViewModelTests
     }
 
     [Fact]
-    public void BuildOptionsMapsLongEdgeResize()
+    public void AllowUpscaleDefaultsFalseSoResizeClampsEnlargement()
     {
         var vm = NewVm();
+        Assert.False(vm.AllowUpscale);
+
         vm.SelectedFormat = OutputFormat.Jpg;
         vm.ResizeMode = ResizeMode.LongEdge;
         vm.ResizeLongEdge = 1200;
-        vm.DontUpscale = true;
 
         var resize = vm.BuildOptions().Resize;
         Assert.Equal(ResizeMode.LongEdge, resize.Mode);
         Assert.Equal(1200, resize.Width);
-        Assert.True(resize.DontUpscale);
+        Assert.True(resize.DontUpscale); // AllowUpscale=false => DontUpscale=true
+    }
+
+    [Fact]
+    public void AllowUpscaleMapsToInverseOfDontUpscale()
+    {
+        var vm = NewVm();
+        vm.ResizeMode = ResizeMode.LongEdge;
+        vm.ResizeLongEdge = 1200;
+
+        vm.AllowUpscale = true;
+        Assert.False(vm.BuildOptions().Resize.DontUpscale);
+
+        vm.AllowUpscale = false;
+        Assert.True(vm.BuildOptions().Resize.DontUpscale);
     }
 }
