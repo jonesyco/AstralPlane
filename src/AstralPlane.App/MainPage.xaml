@@ -12,6 +12,8 @@
     <Page.Resources>
         <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
         <local:InverseBoolConverter x:Key="InverseBool" />
+        <local:BytesToImageConverter x:Key="BytesToImage" />
+        <local:BoolToOpacityConverter x:Key="UnsupportedToOpacity" />
     </Page.Resources>
 
     <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
@@ -31,6 +33,16 @@
                     IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
             <Button Content="Add folder…" Click="AddFolder_Click"
                     IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+            <AppBarSeparator />
+            <Button Content="Select all" Click="SelectAll_Click"
+                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+            <Button Content="Deselect all" Click="DeselectAll_Click"
+                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+            <Button Content="Remove selected" Click="RemoveSelected_Click"
+                    IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
+            <AppBarSeparator />
+            <ToggleButton Content="Grid / List" Click="ToggleView_Click"
+                          IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
             <Button Content="Clear" Click="Clear_Click"
                     IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay, Converter={StaticResource InverseBool}}" />
         </StackPanel>
@@ -45,28 +57,50 @@
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Visibility="{x:Bind ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}, ConverterParameter=invert}" />
-                <ListView ItemsSource="{x:Bind ViewModel.Queue, Mode=OneWay}"
-                          SelectionMode="None" Padding="4">
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:QueueItemViewModel">
-                            <Grid ColumnSpacing="12" Padding="4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="{x:Bind FileName}" />
-                                    <TextBlock Text="{x:Bind Message, Mode=OneWay}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               FontSize="12" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="1" Text="{x:Bind Status, Mode=OneWay}"
-                                           VerticalAlignment="Center"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
+
+                <ScrollViewer Padding="4">
+                    <ItemsRepeater x:Name="QueueRepeater"
+                                   ItemsSource="{x:Bind ViewModel.Queue, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout MinItemWidth="180" MinItemHeight="200"
+                                               MinColumnSpacing="8" MinRowSpacing="8" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="vm:QueueItemViewModel">
+                                <Grid Loaded="Tile_Loaded" Width="176" Padding="8" RowSpacing="6"
+                                      CornerRadius="6"
+                                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                      Opacity="{x:Bind IsUnsupported, Converter={StaticResource UnsupportedToOpacity}}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="140" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Thumbnail or placeholder -->
+                                    <Grid Grid.Row="0">
+                                        <Image Stretch="Uniform"
+                                               Source="{x:Bind Thumbnail, Mode=OneWay, Converter={StaticResource BytesToImage}}"
+                                               Visibility="{x:Bind ShowThumbnail, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                                        <FontIcon Glyph="&#xE91B;" FontSize="40"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                  Visibility="{x:Bind ShowPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+                                        <CheckBox HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                  IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                                  Visibility="{x:Bind IsSelectable, Converter={StaticResource BoolToVisibility}}" />
+                                    </Grid>
+
+                                    <TextBlock Grid.Row="1" Text="{x:Bind FileName}"
+                                               TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                    <TextBlock Grid.Row="2" Text="{x:Bind Status, Mode=OneWay}"
+                                               FontSize="12"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </ScrollViewer>
             </Grid>
         </Border>
 
@@ -102,8 +136,8 @@
                           SelectedItem="{x:Bind ViewModel.Options.ResizeMode, Mode=TwoWay}" />
                 <NumberBox Header="Long edge (px)" Width="200"
                            Value="{x:Bind ViewModel.Options.ResizeLongEdge, Mode=TwoWay}" />
-                <CheckBox Content="Don't upscale"
-                          IsChecked="{x:Bind ViewModel.Options.DontUpscale, Mode=TwoWay}" />
+                <CheckBox Content="Allow upscaling"
+                          IsChecked="{x:Bind ViewModel.Options.AllowUpscale, Mode=TwoWay}" />
 
                 <TextBlock Text="Metadata" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
                 <ComboBox Header="EXIF/XMP" Width="200"

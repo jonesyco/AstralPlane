@@ -17,11 +17,32 @@ public sealed partial class MainPage : Page
     private CancellationTokenSource? _cts;
 
     public MainViewModel ViewModel { get; } =
-        new(new ConversionOptionsViewModel(new MagickFormatCapabilityProbe()));
+        new(new ConversionOptionsViewModel(new MagickFormatCapabilityProbe()),
+            thumbnailProvider: new ShellThumbnailProvider());
 
     public MainPage()
     {
         InitializeComponent();
+
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.ViewMode))
+                ApplyLayout();
+        };
+        ApplyLayout();
+    }
+
+    private void ApplyLayout()
+    {
+        QueueRepeater.Layout = ViewModel.ViewMode == QueueViewMode.Grid
+            ? new UniformGridLayout
+            {
+                MinItemWidth = 180,
+                MinItemHeight = 200,
+                MinColumnSpacing = 8,
+                MinRowSpacing = 8,
+            }
+            : new StackLayout { Spacing = 4 };
     }
 
     private static void InitializeWithWindow(object target)
@@ -53,6 +74,22 @@ public sealed partial class MainPage : Page
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e) => ViewModel.Clear();
+
+    private void ToggleView_Click(object sender, RoutedEventArgs e) => ViewModel.ToggleViewMode();
+
+    private void SelectAll_Click(object sender, RoutedEventArgs e) => ViewModel.SelectAll();
+
+    private void DeselectAll_Click(object sender, RoutedEventArgs e) => ViewModel.DeselectAll();
+
+    private void RemoveSelected_Click(object sender, RoutedEventArgs e) => ViewModel.RemoveSelected();
+
+    // Lazy, per-tile thumbnail load: fires as a tile is realized by the virtualized
+    // ItemsRepeater. EnsureThumbnailAsync is a no-op after the first attempt per item.
+    private async void Tile_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: QueueItemViewModel item })
+            await ViewModel.EnsureThumbnailAsync(item);
+    }
 
     private void Queue_DragOver(object sender, DragEventArgs e)
     {
