@@ -1,8 +1,16 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using AstralPlane.Core;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AstralPlane.App.ViewModels;
+
+/// <summary>How the queue is laid out in the UI.</summary>
+public enum QueueViewMode
+{
+    Grid,
+    List,
+}
 
 /// <summary>
 /// Top-level view model: manages the file queue and conversion options.
@@ -10,13 +18,21 @@ namespace AstralPlane.App.ViewModels;
 /// </summary>
 public sealed partial class MainViewModel : ObservableObject
 {
+    /// <summary>Pixel size requested from the thumbnail provider.</summary>
+    private const int ThumbnailPixelSize = 256;
+
     private readonly Func<string, InputCategory> _classifier;
+    private readonly IThumbnailProvider? _thumbnailProvider;
     private readonly HashSet<string> _knownPaths = new(StringComparer.OrdinalIgnoreCase);
 
-    public MainViewModel(ConversionOptionsViewModel options, Func<string, InputCategory>? classifier = null)
+    public MainViewModel(
+        ConversionOptionsViewModel options,
+        Func<string, InputCategory>? classifier = null,
+        IThumbnailProvider? thumbnailProvider = null)
     {
         Options = options;
         _classifier = classifier ?? (path => FormatDetector.Detect(path).Category);
+        _thumbnailProvider = thumbnailProvider;
     }
 
     public ConversionOptionsViewModel Options { get; }
@@ -27,11 +43,20 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanConvert))]
     private bool _isRunning;
 
-    public bool CanConvert => !IsRunning && Queue.Any(i => i.Status == QueueItemStatus.Ready);
+    [ObservableProperty] private QueueViewMode _viewMode = QueueViewMode.Grid;
+
+    public void ToggleViewMode() =>
+        ViewMode = ViewMode == QueueViewMode.Grid ? QueueViewMode.List : QueueViewMode.Grid;
+
+    public bool CanConvert =>
+        !IsRunning && Queue.Any(i => i.Status == QueueItemStatus.Ready && i.IsSelected);
 
     public bool HasItems => Queue.Count > 0;
 
     public bool HasOutputFolder => !string.IsNullOrEmpty(LastOutputFolder);
+
+    /// <summary>Number of selectable items currently selected for conversion.</summary>
+    public int SelectedCount => Queue.Count(i => i.IsSelectable && i.IsSelected);
 
     /// <summary>Adds files to the queue, de-duplicating by full path and classifying each.</summary>
     public void AddFiles(IEnumerable<string> paths)
@@ -42,10 +67,13 @@ public sealed partial class MainViewModel : ObservableObject
             if (!_knownPaths.Add(fullPath))
                 continue; // already queued
 
-            Queue.Add(new QueueItemViewModel(fullPath, _classifier(fullPath)));
+            var item = new QueueItemViewModel(fullPath, _classifier(fullPath));
+            item.PropertyChanged += OnItemPropertyChanged;
+            Queue.Add(item);
         }
         OnPropertyChanged(nameof(CanConvert));
         OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(SelectedCount));
     }
 
     /// <summary>Enumerates a folder (optionally recursively) and adds the files.</summary>
@@ -57,10 +85,83 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void Clear()
     {
+        foreach (var item in Queue)
+            item.PropertyChanged -= OnItemPropertyChanged;
         Queue.Clear();
         _knownPaths.Clear();
         OnPropertyChanged(nameof(CanConvert));
         OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(SelectedCount));
+    }
+
+    /// <summary>Selects every selectable (supported) item.</summary>
+    public void SelectAll()
+    {
+        foreach (var item in Queue.Where(i => i.IsSelectable))
+            item.IsSelected = true;
+    }
+
+    /// <summary>Deselects every item.</summary>
+    public void DeselectAll()
+    {
+        foreach (var item in Queue)
+            item.IsSelected = false;
+    }
+
+    /// <summary>Removes selected items from the queue and frees their paths for re-adding.</summary>
+    public void RemoveSelected()
+    {
+        var toRemove = Queue.Where(i => i.IsSelected).ToList();
+        foreach (var item in toRemove)
+        {
+            item.PropertyChanged -= OnItemPropertyChanged;
+            Queue.Remove(item);
+            _knownPaths.Remove(item.SourcePath);
+        }
+        OnPropertyChanged(nameof(CanConvert));
+        OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(SelectedCount));
+    }
+
+    /// <summary>
+    /// Loads an item's thumbnail once via the injected provider, setting
+    /// <see cref="ThumbnailState"/> to Loaded or Unavailable. A no-op if already
+    /// attempted or when no provider is configured.
+    /// </summary>
+    public async Task EnsureThumbnailAsync(QueueItemViewModel item)
+    {
+        if (_thumbnailProvider is null || item.ThumbnailRequested)
+            return;
+        item.ThumbnailRequested = true;
+
+        byte[]? bytes;
+        try
+        {
+            bytes = await _thumbnailProvider.GetAsync(item.SourcePath, ThumbnailPixelSize, CancellationToken.None);
+        }
+        catch
+        {
+            bytes = null; // thumbnail failure never affects conversion
+        }
+
+        if (bytes is { Length: > 0 })
+        {
+            item.Thumbnail = bytes;
+            item.ThumbnailState = ThumbnailState.Loaded;
+        }
+        else
+        {
+            item.ThumbnailState = ThumbnailState.Unavailable;
+        }
+    }
+
+    private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(QueueItemViewModel.IsSelected) or nameof(QueueItemViewModel.Status))
+        {
+            OnPropertyChanged(nameof(CanConvert));
+            OnPropertyChanged(nameof(SelectedCount));
+        }
     }
 
     [ObservableProperty]
@@ -69,13 +170,13 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string? _completionSummary;
 
     /// <summary>
-    /// Converts all Ready items using the given converter (ConversionEngine in
-    /// the app; a fake in tests). Runs off the caller's thread via BatchRunner;
+    /// Converts Ready ∧ selected items using the given converter (ConversionEngine
+    /// in the app; a fake in tests). Runs off the caller's thread via BatchRunner;
     /// item statuses are updated from the final result for determinism.
     /// </summary>
     public async Task ConvertAsync(IItemConverter converter, CancellationToken cancellationToken = default)
     {
-        var readyItems = Queue.Where(i => i.Status == QueueItemStatus.Ready).ToList();
+        var readyItems = Queue.Where(i => i.Status == QueueItemStatus.Ready && i.IsSelected).ToList();
         if (readyItems.Count == 0)
             return;
 

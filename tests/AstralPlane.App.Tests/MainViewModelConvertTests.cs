@@ -19,6 +19,14 @@ public class MainViewModelConvertTests
         }
     }
 
+    private sealed class RecordingConverter(List<string> converted) : IItemConverter
+    {
+        public void Convert(string source, string output, ConversionOptions options)
+        {
+            lock (converted) converted.Add(source);
+        }
+    }
+
     private static MainViewModel NewVm()
     {
         var options = new ConversionOptionsViewModel(new FakeProbe()); // SameAsSource by default
@@ -49,5 +57,22 @@ public class MainViewModelConvertTests
         await vm.ConvertAsync(new FakeConverter(_ => true));
 
         Assert.Contains("boom", vm.Queue.Single().Message);
+    }
+
+    [Fact]
+    public async Task ConvertProcessesOnlySelectedReadyItems()
+    {
+        var vm = NewVm();
+        vm.AddFiles([@"C:\pics\keep.png", @"C:\pics\skip.png"]);
+        vm.Queue.Single(i => i.FileName == "skip.png").IsSelected = false;
+
+        var converted = new List<string>();
+        await vm.ConvertAsync(new RecordingConverter(converted));
+
+        Assert.Contains(@"C:\pics\keep.png", converted);
+        Assert.DoesNotContain(@"C:\pics\skip.png", converted);
+        // Deselected item is left untouched (still Ready), not marked Skipped/Done.
+        Assert.Equal(QueueItemStatus.Ready, vm.Queue.Single(i => i.FileName == "skip.png").Status);
+        Assert.Equal(QueueItemStatus.Done, vm.Queue.Single(i => i.FileName == "keep.png").Status);
     }
 }
